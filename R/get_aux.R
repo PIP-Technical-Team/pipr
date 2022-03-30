@@ -24,20 +24,15 @@ get_aux <- function(table = NULL, version = NULL, api_version = "v1",
   api_version <- match.arg(api_version)
   format <- match.arg(format)
 
-  # Check connection
-  check_internet()
-  check_api(api_version, server)
-
-  # Build query string
-  u <- build_url(server, "aux", api_version = api_version)
-
   # Return response
   if (is.null(table)) {
-    res <- httr::GET(u)
+    res <- send_query(server, endpoint = "aux", api_version = api_version)
     parse_response(res, simplify = simplify)
   } else {
     args <- build_args(table = table, version = version, format = format)
-    res <- httr::GET(u, query = args, httr::user_agent(pipr_user_agent))
+    res <-  send_query(server, endpoint = "aux",
+                       query = args,
+                       api_version = api_version)
     parse_response(res, simplify = simplify)
   }
 }
@@ -56,7 +51,6 @@ get_countries <- function(version = NULL, api_version = "v1",
     format = format, server = server
   )
 }
-
 
 #' @rdname get_aux
 #' @export

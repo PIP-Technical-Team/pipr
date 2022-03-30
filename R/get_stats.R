@@ -88,10 +88,6 @@ get_stats <- function(country = "all",
     group_by <- NULL
   }
 
-  # Check connection
-  check_internet()
-  check_api(api_version, server)
-
   # Build query string
   args <- build_args(
     country = country, year = year, povline = povline,
@@ -100,10 +96,12 @@ get_stats <- function(country = "all",
     reporting_level = reporting_level,
     version = version, format = format
   )
-  u <- build_url(server, endpoint, api_version)
 
   # Send query
-  res <- httr::GET(u, query = args, httr::user_agent(pipr_user_agent))
+  res <- send_query(
+    server, query = args,
+    endpoint = endpoint,
+    api_version = api_version)
 
   # Parse result
   out <- parse_response(res, simplify)
@@ -125,19 +123,17 @@ get_wb <- function(year = "all",
   api_version <- match.arg(api_version)
   format <- match.arg(format)
 
-  # Check connection
-  check_internet()
-  check_api(api_version, server)
-
   # Build query string
   args <- build_args(
     country = "all", year = year, povline = povline,
     group_by = "wb", version = version, format = format
   )
-  u <- build_url(server, "pip-grp", api_version)
-
+  
   # Send query
-  res <- httr::GET(u, query = args, httr::user_agent(pipr_user_agent))
+  res <- send_query(
+    server, query = args,
+    endpoint = "pip-grp",
+    api_version = api_version)
 
   # Parse result
   out <- parse_response(res, simplify)
