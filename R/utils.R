@@ -1,3 +1,7 @@
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Parsing and checking functions  -------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 #' check_internet
 #' @noRd
 check_internet <- function() {
@@ -113,7 +117,8 @@ build_args <- function(.country = NULL,
 parse_response <- function(res, simplify) {
 
   # Get response type
-  type <- tryCatch(suppressWarnings(httr::http_type(res)), error = function(e) NULL)
+  type <- tryCatch(suppressWarnings(httr::http_type(res)),
+                   error = function(e) NULL)
 
   # Stop if response type is unknown
   attempt::stop_if(is.null(type), msg = "Invalid response format")
@@ -178,18 +183,187 @@ select_base_url <- function(server) {
   return(base_url)
 }
 
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Formatting functions -------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+#' rename columns in dataframe
+#'
+#' @param df  data frame
+#' @param oldnames  character: old names
+#' @param newnames  character: new names
+#'
+#' @return data frame with new names
+#' @keywords internal
+rename_cols <- function(df, oldnames, newnames) {
+
+  #   _______________________________________
+  #   Defenses                               ####
+  stopifnot( exprs = {
+    is.data.frame(df)
+    length(oldnames) == length(newnames)
+    # all(oldnames %in% names(df))
+  }
+  )
+
+  #   ___________________________________________
+  #   Computations                              ####
+  df_names <- names(df)
+
+  old_position <- which(oldnames %in% df_names)
+  old_available <- oldnames[old_position]
+  new_available <- newnames[old_position]
+
+  tochange <- vector(length = length(old_available))
+
+  for (i in seq_along(old_available)) {
+    tochange[i] <- which(df_names %in% old_available[i])
+  }
+
+  names(df)[tochange] <- new_available
+
+
+  #   ____________________________________________
+  #   Return                                      ####
+  return(df)
+
+}
+
+
 #' Rename columns
 #' TEMP function to rename response cols
 #' @param df A data.frame
 #' @param url response url
 #' @noRd
 tmp_rename_cols <- function(df, url = "") {
-    df <- data.table::setnames(
-      df,
-      old = c("survey_year", "reporting_year", "reporting_pop", "reporting_gdp", "reporting_pce", "pce_data_level"),
-      new = c("welfare_time", "year", "pop", "gdp", "hfce", "hfce_data_level"),
-      skip_absent = TRUE
-    )
 
-  return(df)
+  oldnames = c(
+    "survey_year",
+    "reporting_year",
+    "reporting_pop",
+    "reporting_gdp",
+    "reporting_pce",
+    "pce_data_level"
+  )
+
+  newnames = c("welfare_time",
+               "year",
+               "pop",
+               "gdp",
+               "hfce",
+               "hfce_data_level")
+
+  rename_cols(df,oldnames, newnames)
 }
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Caching functions -------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#' Get parent function hash for caching
+#'
+#' @return function hash
+#' @keywords internal
+get_fun_hash <- function() {
+  # name of parent function
+
+  scall  <- sys.call(-1)
+  chcall <- as.character(scall)
+
+  # early return
+  if (!grepl("^get_", chcall[1])) {
+    return(invisible(FALSE))
+  }
+
+  fname <- match.call(definition = sys.function(-1),
+                      call       = scall)[[1]] |>
+    as.character()
+
+  # get environment of parent function. this MUST placer right after all
+  # match.arg() calls
+  fargs <-
+    parent.frame() |>
+    as.list()
+
+  # get function body in case it changes (this should not be necessary)
+  fbody <- body(fname) |>
+    as.character()
+
+  list(fbody, fargs) |>
+    rlang::hash()
+}
+
+
+#' Check if cache is available
+#'
+#' Checks whether hash or dataframe is cached. Only of the two is
+#'
+#' @param df dataframe
+#' @param fhash character: hash of calling function
+#'
+#' @return logical. whether the hash exist of the dataframe is cached.
+#' @keywords internal
+is_cached <- function(df = NULL, fhash = NULL) {
+
+  stopifnot(exprs = {
+    !(is.null(fhash) && is.null(df))   # both null
+    !(!is.null(fhash) && !is.null(df)) # both no null
+  })
+
+  ic <-
+    if (isFALSE(fhash)) {
+      FALSE
+    }
+    else if (!is.null(fhash)) {
+    rlang::env_has(.pipcache, fhash)
+  } else {
+    attr(df, "is_cached")
+  }
+
+  ic
+}
+
+
+#' @describeIn is_cached Load cached data
+load_cache <- function(fhash) {
+
+  # early return
+  if (isFALSE(fhash)) {
+    return(invisible(FALSE))
+  }
+
+  cli::cli_alert("loading from cache")
+  rlang::env_get(.pipcache, fhash)
+
+}
+
+#' @param out  data to be cached
+#' @param force  logical. If TRUE force the creation of cache. Default is FALSE
+#'
+#' @describeIn is_cached Saves cache data
+save_cache <- function(fhash, out, force = FALSE) {
+
+  # early return
+  if (isFALSE(fhash)) {
+    return(invisible(FALSE))
+  }
+
+  if (is_cached(fhash = fhash) &&  isFALSE(force)) {
+    return(invisible(TRUE))
+  }
+
+  # save cache
+  cli::cli_alert("creating cache")
+  attr(out, "is_cached") <- TRUE
+  rlang::env_poke(env   = .pipcache,
+                  nm    = fhash,
+                  value = out)
+
+  # Return invisible available of cache
+  is_cached(out) |>
+    invisible()
+}
+
